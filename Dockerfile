@@ -1,5 +1,5 @@
 # Многоэтапная оптимизированная сборка чистого Rust бинарника
-FROM rust:1.80-slim as builder
+FROM rust:latest as builder
 
 WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
@@ -25,5 +25,4 @@ COPY icon-512.png /app/icon-512.png
 EXPOSE 8000
 ENV HOST=0.0.0.0
 ENV PORT=8000
-
 CMD [ "/app/jeboss-live" ]
