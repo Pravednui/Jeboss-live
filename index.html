@@ -5,26 +5,26 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>JeBoss Live</title>
   
-  <!-- iOS PWA настройки для iPhone (X - 18 Pro Max) -->
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="JeBoss" />
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="manifest" href="/manifest.json" />
-  <meta name="theme-color" content="#0c0d10" />
+  <meta name="theme-color" content="#060814" />
 
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
     :root {
-      --bg: #0c0d10;
-      --card: #16181f;
-      --accent: #ff2e63;
-      --active: #00d285;
-      --text: #f5f6f8;
-      --muted: #9aa0ad;
+      --bg: #050713;
+      --panel: rgba(18, 22, 40, 0.75);
+      --accent: #2979ff;
+      --glow: #00d2ff;
+      --text: #f0f4fc;
+      --muted: #79869f;
     }
     * {
       box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
     }
     html, body {
       margin: 0;
@@ -33,8 +33,9 @@
       width: 100%;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background-color: var(--bg);
-      background-image: radial-gradient(circle at top, #1d1424 0%, var(--bg) 65%);
+      background-image: radial-gradient(circle at 50% 20%, #0d1538 0%, #050713 75%);
       color: var(--text);
+      overflow: hidden;
     }
     .app {
       min-height: 100dvh;
@@ -43,162 +44,385 @@
       flex-direction: column;
       align-items: center;
       justify-content: space-between;
-      padding: 20px 16px 28px;
-      gap: 20px;
+      padding: max(20px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
       text-align: center;
+      position: relative;
     }
+
+    /* Верхний хедер */
     .header {
       width: 100%;
-      max-width: 420px;
-      background: var(--card);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 18px;
-      padding: 14px 16px;
+      max-width: 440px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 18px;
+      background: var(--panel);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 24px;
+      z-index: 10;
+    }
+    .header-left {
+      text-align: left;
     }
     .title {
-      font-size: 18px;
+      font-size: 17px;
       font-weight: 700;
-      margin: 0 0 4px;
+      letter-spacing: 0.3px;
+      color: #fff;
     }
     .status {
-      font-size: 13px;
+      font-size: 12px;
       color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
     }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #555;
+      transition: background 0.3s;
+    }
+    .status-dot.active {
+      background: #00e676;
+      box-shadow: 0 0 10px #00e676;
+    }
+
+    /* Центральная область (Стартовая кнопка и визуализация) */
     .center {
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 20px;
+      justify-content: center;
+      flex: 1;
       width: 100%;
-      max-width: 420px;
+      max-width: 440px;
+      position: relative;
     }
-    #liveBtn {
-      width: 148px;
-      height: 148px;
+
+    /* Стартовая большая кнопка (до включения лайва) */
+    #startBtn {
+      width: 154px;
+      height: 154px;
       border-radius: 50%;
       border: none;
-      background: var(--accent);
+      background: linear-gradient(135deg, #ff2e63 0%, #ff5252 100%);
       color: #ffffff;
-      font-size: 17px;
+      font-size: 18px;
       font-weight: 700;
       cursor: pointer;
-      box-shadow: 0 0 36px rgba(255, 46, 99, 0.45);
-      transition: transform 0.15s ease, background 0.2s ease, box-shadow 0.2s ease;
+      box-shadow: 0 0 45px rgba(255, 46, 99, 0.45);
+      transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 20;
     }
-    #liveBtn.live {
-      background: var(--active);
-      box-shadow: 0 0 40px rgba(0, 210, 133, 0.5);
-      animation: pulse 1.6s infinite;
+    #startBtn:active {
+      transform: scale(0.94);
     }
-    @keyframes pulse {
-      0% { transform: scale(1); }
-      50% { transform: scale(1.05); }
-      100% { transform: scale(1); }
+    #startBtn.hidden {
+      opacity: 0;
+      pointer-events: none;
+      transform: scale(0.5);
+      position: absolute;
     }
+
+    /* Визуализатор звуковых волн Gemini (во время разговора) */
+    .visualizer-container {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 24px;
+      width: 100%;
+    }
+    .visualizer-container.active {
+      display: flex;
+      animation: fadeIn 0.4s ease forwards;
+    }
+
+    .orb-glow {
+      width: 160px;
+      height: 160px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(0, 149, 255, 0.45) 0%, rgba(5, 7, 19, 0) 70%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+    .orb-core {
+      width: 74px;
+      height: 74px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #00d2ff, #0055ff);
+      box-shadow: 0 0 35px #00a2ff;
+      transition: transform 0.1s ease;
+    }
+    .orb-core.speaking {
+      animation: orbPulse 1.1s infinite alternate ease-in-out;
+    }
+    @keyframes orbPulse {
+      0% { transform: scale(0.92); box-shadow: 0 0 25px #00a2ff; }
+      100% { transform: scale(1.18); box-shadow: 0 0 55px #00e5ff; }
+    }
+
+    /* Блок текста (скрыт по умолчанию, появляется только по просьбе пользователя) */
     .transcript-box {
       width: 100%;
-      min-height: 104px;
-      max-height: 240px;
+      min-height: 80px;
+      max-height: 200px;
       overflow-y: auto;
-      background: var(--card);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 16px;
+      background: rgba(14, 18, 36, 0.6);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 18px;
       padding: 14px;
       font-size: 14px;
       line-height: 1.45;
-      color: var(--text);
       text-align: left;
     }
-    .hint {
-      font-size: 12px;
-      color: var(--muted);
-      max-width: 360px;
-      line-height: 1.4;
+    .transcript-box.hidden {
+      display: none;
+    }
+
+    /* Нижняя панель Gemini Control Bar */
+    .control-bar {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      max-width: 440px;
+      padding: 10px 14px;
+      background: rgba(15, 20, 38, 0.82);
+      backdrop-filter: blur(28px);
+      -webkit-backdrop-filter: blur(28px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 40px;
+      box-shadow: 0 10px 35px rgba(0, 0, 0, 0.5);
+      z-index: 30;
+    }
+    .control-bar.active {
+      display: flex;
+      animation: slideUp 0.35s cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
+    }
+
+    .btn-circle {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      border: none;
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.15s;
+    }
+    .btn-circle:active {
+      transform: scale(0.9);
+      background: rgba(255, 255, 255, 0.18);
+    }
+    .btn-circle.active-btn {
+      background: #2979ff;
+      color: #fff;
+    }
+    .btn-circle.danger {
+      background: rgba(255, 46, 99, 0.2);
+      color: #ff3366;
+    }
+    .btn-circle.danger:active {
+      background: rgba(255, 46, 99, 0.4);
+    }
+    .btn-circle svg {
+      width: 22px;
+      height: 22px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    /* Центральная овальная капсула волн Gemini */
+    .capsule-wave {
+      flex: 1;
+      height: 48px;
+      max-width: 140px;
+      margin: 0 10px;
+      background: radial-gradient(circle at center, #001f54 0%, #060b24 100%);
+      border: 1px solid rgba(0, 162, 255, 0.25);
+      border-radius: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      cursor: pointer;
+      overflow: hidden;
+      position: relative;
+    }
+    .wave-bar {
+      width: 3.5px;
+      height: 8px;
+      background: #00d2ff;
+      border-radius: 4px;
+      transition: height 0.1s ease;
+    }
+    .capsule-wave.speaking .wave-bar:nth-child(1) { animation: wave 0.8s infinite 0.1s; }
+    .capsule-wave.speaking .wave-bar:nth-child(2) { animation: wave 0.8s infinite 0.3s; }
+    .capsule-wave.speaking .wave-bar:nth-child(3) { animation: wave 0.8s infinite 0.2s; }
+    .capsule-wave.speaking .wave-bar:nth-child(4) { animation: wave 0.8s infinite 0.4s; }
+    .capsule-wave.speaking .wave-bar:nth-child(5) { animation: wave 0.8s infinite 0.15s; }
+
+    @keyframes wave {
+      0%, 100% { height: 8px; }
+      50% { height: 26px; background: #fff; }
+    }
+    @keyframes slideUp {
+      from { transform: translateY(50px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: scale(0.95); }
+      to { opacity: 1; transform: scale(1); }
+    }
+
+    /* Скрытый видео-поток для камеры */
+    #cameraPreview {
+      display: none;
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      z-index: 1;
+      opacity: 0.35;
+      border-radius: 24px;
+    }
+    #cameraPreview.active {
+      display: block;
     }
   </style>
 </head>
 <body>
   <div class="app">
-    <div class="header">
-      <div class="title">JeBoss • Live</div>
-      <div id="status" class="status">Отключено</div>
-    </div>
+    <video id="cameraPreview" autoplay playsinline muted></video>
 
-    <div class="center">
-      <button id="liveBtn" type="button">Включить лайв</button>
-      <div id="transcript" class="transcript-box">
-        Нажми «Включить лайв», разреши микрофон и говори в обычном темпе.
+    <!-- Верхняя панель -->
+    <div class="header">
+      <div class="header-left">
+        <div class="title">JeBoss • Live</div>
+        <div class="status">
+          <span id="statusDot" class="status-dot"></span>
+          <span id="statusText">Отключено</span>
+        </div>
       </div>
     </div>
 
-    <div class="hint">
-      🟢 JeBoss Live подключен • Говори свободно
+    <!-- Центральная область -->
+    <div class="center">
+      <!-- Стартовая кнопка -->
+      <button id="startBtn" type="button">Включить лайв</button>
+
+      <!-- Визуализатор во время разговора -->
+      <div id="visualizer" class="visualizer-container">
+        <div class="orb-glow">
+          <div id="orbCore" class="orb-core"></div>
+        </div>
+        <!-- Транскрипт скрыт и показывается только по требованию пользователя -->
+        <div id="transcript" class="transcript-box hidden"></div>
+      </div>
+    </div>
+
+    <!-- Нижняя панель в стиле Gemini -->
+    <div id="controlBar" class="control-bar">
+      <!-- Кнопка 1: Плюс (добавить фото / файл) -->
+      <button id="btnPlus" class="btn-circle" title="Добавить фото">
+        <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+      </button>
+
+      <!-- Кнопка 2: Камера (видео-режим) -->
+      <button id="btnCamera" class="btn-circle" title="Включить камеру">
+        <svg viewBox="0 0 24 24"><path d="M23 7l-7 5 7 5V7z"></path><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
+      </button>
+
+      <!-- Центральная капсула: Анимация речи / Пауза -->
+      <div id="capsuleWave" class="capsule-wave" title="Голосовой поток">
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+        <div class="wave-bar"></div>
+      </div>
+
+      <!-- Кнопка 4: Микрофон (Mute / Unmute) -->
+      <button id="btnMic" class="btn-circle active-btn" title="Выключить микрофон">
+        <svg id="micIcon" viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
+      </button>
+
+      <!-- Кнопка 5: Завершить разговор (Крестик) -->
+      <button id="btnClose" class="btn-circle danger" title="Завершить лайв">
+        <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
     </div>
   </div>
 
+  <input type="file" id="fileInput" accept="image/*" style="display: none;" />
+
   <script>
-    // Регистрация Service Worker для PWA на iOS
+    // PWA регистрация
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js').catch(err => {
-          console.warn('SW registration failed:', err);
-        });
+        navigator.serviceWorker.register('/sw.js').catch(err => console.warn('SW:', err));
       });
     }
 
-    // Определение адреса WebSocket
-    // 1. Из параметров URL: ?ws=wss://your-domain.com
-    // 2. Или если открыто на том же хосте (location.host)
-    // 3. Или fallback на настроенный сервер
-    const urlParams = new URLSearchParams(window.location.search);
-    const customWs = urlParams.get("ws");
+    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const WS_URL = `${proto}//${window.location.host}/ws/live`;
 
-    let WS_URL;
-    if (customWs) {
-      WS_URL = customWs.endsWith("/ws/live") ? customWs : `${customWs}/ws/live`;
-    } else if (window.location.hostname && window.location.hostname !== "localhost" && !window.location.hostname.includes("github.io")) {
-      const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-      WS_URL = `${proto}//${window.location.host}/ws/live`;
-    } else {
-      // Укажите адрес вашего бэкенда на Render / Railway / ngrok:
-      WS_URL = "wss://jeboss-backend.onrender.com/ws/live";
-    }
-
-    const liveBtn = document.getElementById("liveBtn");
-    const statusEl = document.getElementById("status");
+    const startBtn = document.getElementById("startBtn");
+    const controlBar = document.getElementById("controlBar");
+    const visualizer = document.getElementById("visualizer");
+    const orbCore = document.getElementById("orbCore");
+    const capsuleWave = document.getElementById("capsuleWave");
+    const statusText = document.getElementById("statusText");
+    const statusDot = document.getElementById("statusDot");
     const transcriptEl = document.getElementById("transcript");
+    const cameraPreview = document.getElementById("cameraPreview");
 
-    let tg = null;
-    try {
-      tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
-      if (tg) {
-        tg.ready();
-        tg.expand();
-      }
-    } catch (e) {
-      console.warn("Telegram WebApp init warning:", e);
-    }
+    const btnPlus = document.getElementById("btnPlus");
+    const btnCamera = document.getElementById("btnCamera");
+    const btnMic = document.getElementById("btnMic");
+    const btnClose = document.getElementById("btnClose");
+    const fileInput = document.getElementById("fileInput");
 
     let ws = null;
     let audioCtx = null;
     let mediaStream = null;
-    let sourceNode = null;
+    let cameraStream = null;
     let processorNode = null;
+    let sourceNode = null;
     let isLive = false;
-    let nextPlayTime = 0;
+    let isMuted = false;
+    let isCameraOn = false;
 
-    function setStatus(msg) {
-      statusEl.textContent = msg;
+    function setStatus(msg, active = true) {
+      statusText.textContent = msg;
+      if (active) statusDot.classList.add("active");
+      else statusDot.classList.remove("active");
     }
 
     function appendLine(label, text) {
-      if (!text) return;
+      transcriptEl.classList.remove("hidden");
       const line = document.createElement("div");
-      line.style.marginBottom = "8px";
-      const strong = document.createElement("strong");
-      strong.textContent = label + ": ";
-      line.appendChild(strong);
-      line.appendChild(document.createTextNode(text));
+      line.style.marginBottom = "6px";
+      line.innerHTML = `<strong>${label}:</strong> ${text}`;
       transcriptEl.appendChild(line);
       transcriptEl.scrollTop = transcriptEl.scrollHeight;
     }
@@ -214,69 +438,33 @@
       return buffer;
     }
 
-    function playPcm16Chunk(arrayBuffer, sampleRate = 24000) {
-      if (!audioCtx) return;
-      const int16 = new Int16Array(arrayBuffer);
-      if (int16.length === 0) return;
-
-      const float32 = new Float32Array(int16.length);
-      for (let i = 0; i < int16.length; i++) {
-        float32[i] = int16[i] / 32768;
-      }
-
-      const audioBuffer = audioCtx.createBuffer(1, float32.length, sampleRate);
-      audioBuffer.copyToChannel(float32, 0);
-
-      const src = audioCtx.createBufferSource();
-      src.buffer = audioBuffer;
-      src.connect(audioCtx.destination);
-
-      const now = audioCtx.currentTime;
-      if (nextPlayTime < now) {
-        nextPlayTime = now + 0.03;
-      }
-      src.start(nextPlayTime);
-      nextPlayTime += audioBuffer.duration;
-    }
-
-    async function startLive() {
+    async function startLiveSession() {
       try {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-          throw new Error("Микрофон недоступен в этом браузере/контексте");
-        }
-        if (WS_URL.includes("ТВОЙ-БЭКЕНД.com")) {
-          throw new Error("Сначала укажи реальный WSS-адрес бэкенда в коде");
-        }
-
-        setStatus("Запрашиваю микрофон...");
+        setStatus("Подключение...", false);
         mediaStream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true
-          }
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
         });
 
         const AudioContextClass = window.AudioContext || window.webkitAudioContext;
         audioCtx = new AudioContextClass({ sampleRate: 16000 });
         await audioCtx.resume();
-        nextPlayTime = audioCtx.currentTime;
 
-        const initPayload = encodeURIComponent((tg && tg.initData) || "");
-        ws = new WebSocket(`${WS_URL}?initData=${initPayload}`);
+        ws = new WebSocket(WS_URL);
         ws.binaryType = "arraybuffer";
 
         ws.onopen = () => {
           isLive = true;
-          liveBtn.classList.add("live");
-          liveBtn.textContent = "Остановить";
-          setStatus("В эфире — говори");
+          // Прячем круглую стартовую кнопку и показываем панель Gemini
+          startBtn.classList.add("hidden");
+          visualizer.classList.add("active");
+          controlBar.classList.add("active");
+          setStatus("В эфире", true);
 
           sourceNode = audioCtx.createMediaStreamSource(mediaStream);
           processorNode = audioCtx.createScriptProcessor(4096, 1, 1);
 
           processorNode.onaudioprocess = (event) => {
-            if (!isLive || !ws || ws.readyState !== WebSocket.OPEN) return;
+            if (!isLive || !ws || ws.readyState !== WebSocket.OPEN || isMuted) return;
             const inputData = event.inputBuffer.getChannelData(0);
             const pcmBuffer = floatTo16BitPCM(inputData);
             ws.send(pcmBuffer);
@@ -291,84 +479,99 @@
             try {
               const msg = JSON.parse(event.data);
               if (msg.type === "user_text") appendLine("Ты", msg.text);
-              // Выводим текст JeBoss ТОЛЬКО если сервер явно указал show_text
-              if (msg.type === "ai_text" && msg.show_text) {
-                appendLine("JeBoss", msg.text);
-              }
-              if (msg.type === "status") setStatus(msg.text);
+              if (msg.type === "ai_text" && msg.show_text) appendLine("JeBoss", msg.text);
+              if (msg.type === "status") setStatus(msg.text, true);
               if (msg.type === "audio_mp3" && msg.data) {
-                try {
-                  const audio = new Audio("data:audio/mp3;base64," + msg.data);
-                  audio.play().catch(e => {
-                    console.warn("Autoplay block, unlocking:", e);
-                    // Разблокировка на iOS через аудиоконтекст
-                    if (audioCtx && audioCtx.state === 'suspended') {
-                      audioCtx.resume().then(() => audio.play());
-                    }
-                  });
-                } catch (audioErr) {
-                  console.error("Audio playback error:", audioErr);
-                }
+                // Анимация волны во время разговора JeBoss
+                orbCore.classList.add("speaking");
+                capsuleWave.classList.add("speaking");
+
+                const audio = new Audio("data:audio/mp3;base64," + msg.data);
+                audio.onended = () => {
+                  orbCore.classList.remove("speaking");
+                  capsuleWave.classList.remove("speaking");
+                };
+                audio.play().catch(e => console.warn("Audio play:", e));
               }
-              if (msg.type === "interrupt") {
-                nextPlayTime = audioCtx ? audioCtx.currentTime : 0;
-              }
-            } catch {
-              appendLine("JeBoss", event.data);
+            } catch (e) {
+              console.error(e);
             }
-          } else if (event.data instanceof ArrayBuffer) {
-            playPcm16Chunk(event.data, 24000);
           }
         };
 
-        ws.onerror = () => {
-          setStatus("Ошибка соединения с сервером");
-        };
+        ws.onclose = () => stopLiveSession();
+        ws.onerror = () => setStatus("Ошибка сети", false);
 
-        ws.onclose = () => {
-          stopLive();
-        };
       } catch (err) {
-        setStatus("Ошибка: " + err.message);
-        appendLine("Система", err.message);
-        stopLive();
+        setStatus("Ошибка: " + err.message, false);
+        stopLiveSession();
       }
     }
 
-    function stopLive() {
+    function stopLiveSession() {
       isLive = false;
-      liveBtn.classList.remove("live");
-      liveBtn.textContent = "Включить лайв";
-      if (!statusEl.textContent.startsWith("Ошибка:")) {
-        setStatus("Отключено");
-      }
+      // Возвращаем кнопку на место
+      startBtn.classList.remove("hidden");
+      visualizer.classList.remove("active");
+      controlBar.classList.remove("active");
+      setStatus("Отключено", false);
 
-      if (processorNode) {
-        processorNode.disconnect();
-        processorNode.onaudioprocess = null;
-        processorNode = null;
-      }
-      if (sourceNode) {
-        sourceNode.disconnect();
-        sourceNode = null;
-      }
-      if (mediaStream) {
-        mediaStream.getTracks().forEach((t) => t.stop());
-        mediaStream = null;
-      }
-      if (ws) {
-        try { ws.close(); } catch {}
-        ws = null;
-      }
-      if (audioCtx) {
-        audioCtx.close().catch(() => {});
-        audioCtx = null;
-      }
+      if (processorNode) { processorNode.disconnect(); processorNode = null; }
+      if (sourceNode) { sourceNode.disconnect(); sourceNode = null; }
+      if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
+      if (cameraStream) { cameraStream.getTracks().forEach(t => t.stop()); cameraStream = null; cameraPreview.classList.remove("active"); isCameraOn = false; }
+      if (ws) { try { ws.close(); } catch {} ws = null; }
+      if (audioCtx) { audioCtx.close().catch(() => {}); audioCtx = null; }
     }
 
-    liveBtn.onclick = () => {
-      if (isLive) stopLive();
-      else startLive();
+    // Обработчики кнопок панели управления
+    startBtn.onclick = startLiveSession;
+    btnClose.onclick = stopLiveSession;
+
+    // Включение / выключение микрофона (Mute)
+    btnMic.onclick = () => {
+      isMuted = !isMuted;
+      if (isMuted) {
+        btnMic.classList.remove("active-btn");
+        btnMic.classList.add("danger");
+        setStatus("Микрофон выключен", true);
+      } else {
+        btnMic.classList.add("active-btn");
+        btnMic.classList.remove("danger");
+        setStatus("В эфире", true);
+      }
+    };
+
+    // Включение / выключение камеры (Vision)
+    btnCamera.onclick = async () => {
+      if (!isCameraOn) {
+        try {
+          cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+          cameraPreview.srcObject = cameraStream;
+          cameraPreview.classList.add("active");
+          btnCamera.classList.add("active-btn");
+          isCameraOn = true;
+          setStatus("Камера активна", true);
+        } catch (e) {
+          alert("Не удалось включить камеру: " + e.message);
+        }
+      } else {
+        if (cameraStream) cameraStream.getTracks().forEach(t => t.stop());
+        cameraPreview.classList.remove("active");
+        btnCamera.classList.remove("active-btn");
+        isCameraOn = false;
+        setStatus("В эфире", true);
+      }
+    };
+
+    // Кнопка «+» — прикрепление фото
+    btnPlus.onclick = () => fileInput.click();
+    fileInput.onchange = (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        appendLine("Ты", `[Прикрепил фото: ${file.name}]`);
+        setStatus("Фото отправлено JeBoss", true);
+      }
     };
   </script>
 </body>
