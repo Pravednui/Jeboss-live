@@ -128,23 +128,8 @@
   </div>
 
   <script>
-    // Определение адреса WebSocket
-    // 1. Из параметров URL: ?ws=wss://your-domain.com
-    // 2. Или если открыто на том же хосте (location.host)
-    // 3. Или fallback на настроенный сервер
-    const urlParams = new URLSearchParams(window.location.search);
-    const customWs = urlParams.get("ws");
-
-    let WS_URL;
-    if (customWs) {
-      WS_URL = customWs.endsWith("/ws/live") ? customWs : `${customWs}/ws/live`;
-    } else if (window.location.hostname && window.location.hostname !== "localhost" && !window.location.hostname.includes("github.io")) {
-      const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-      WS_URL = `${proto}//${window.location.host}/ws/live`;
-    } else {
-      // Укажите адрес вашего бэкенда на Render / Railway / ngrok:
-      WS_URL = "wss://jeboss-backend.onrender.com/ws/live";
-    }
+    // Замени на адрес своего WebSocket-бэкенда
+    const WS_URL = "wss://ТВОЙ-БЭКЕНД.com/ws/live";
 
     const liveBtn = document.getElementById("liveBtn");
     const statusEl = document.getElementById("status");

@@ -1,6 +1,8 @@
 import asyncio
 import os
 import json
+import io
+import wave
 import base64
 import logging
 from typing import Optional
@@ -8,11 +10,11 @@ from typing import Optional
 from dotenv import load_dotenv
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from google import genai
-from google.genai import types
+import speech_recognition as sr
+from gtts import gTTS
 
 load_dotenv()
 
@@ -20,12 +22,6 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("jeboss-live")
 
 app = FastAPI(title="JeBoss Live API Server")
-
-# Раздача фронтенда прямо из бэкенда (если развернуто на одном сервисе)
-if os.path.exists("index.html"):
-    @app.get("/")
-    async def serve_index():
-        return FileResponse("index.html")
 
 app.add_middleware(
     CORSMiddleware,
@@ -37,19 +33,49 @@ app.add_middleware(
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-SYSTEM_INSTRUCTION = """
-Ты — JeBoss (Жебосс), живой, энергичный, стильный и умный ИИ-друг в Telegram.
-Ты общаешься голосом с пользователем в реальном времени.
-Твои черты:
-- Говори живо, естественно, дружелюбно, уверенно и современно.
-- Отвечай кратко, ёмко и разговорно (не читай длинные лекции, так как это живой голосовой диалог).
-- Поддерживай диалог, задавай вопросы при необходимости, шути к месту.
-- Общайся на языке собеседника (по умолчанию на русском или украинском в зависимости от языка пользователя).
-"""
+if os.path.exists("index.html"):
+    @app.get("/")
+    async def serve_index():
+        return FileResponse("index.html")
 
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "service": "JeBoss Live Server"}
+
+SYSTEM_PROMPT = """
+Ты — JeBoss (Жебосс), живой, энергичный, стильный и умный голосовой ИИ-друг в Telegram.
+Ты общаешься с пользователем короткими фразами в диалоге (1-2 емких предложения), очень естественно, дружелюбно, уверенно и современно.
+Никаких списков, маркеров и длинных лекций — это живая разговорная речь!
+"""
+
+recognizer = sr.Recognizer()
+
+def recognize_audio(pcm_bytes: bytes) -> Optional[str]:
+    try:
+        buf = io.BytesIO()
+        with wave.open(buf, 'wb') as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(16000)
+            wf.writeframes(pcm_bytes)
+        buf.seek(0)
+        with sr.AudioFile(buf) as source:
+            audio_data = recognizer.record(source)
+        text = recognizer.recognize_google(audio_data, language="ru-RU")
+        return text
+    except Exception as e:
+        return None
+
+def text_to_speech_mp3(text: str) -> Optional[bytes]:
+    try:
+        tts = gTTS(text=text, lang='ru')
+        fp = io.BytesIO()
+        tts.write_to_fp(fp)
+        fp.seek(0)
+        return fp.read()
+    except Exception as e:
+        logger.error(f"TTS error: {e}")
+        return None
 
 @app.websocket("/ws/live")
 async def websocket_live_endpoint(websocket: WebSocket):
@@ -65,113 +91,106 @@ async def websocket_live_endpoint(websocket: WebSocket):
         await websocket.close()
         return
 
-    client = genai.Client(api_key=api_key, http_options={'api_version': 'v1alpha'})
-    # Модель для live аудио/мультимодального WebSocket стриминга
-    model_id = "gemini-2.0-flash-exp"
-
-    config = types.LiveConnectConfig(
-        response_modalities=[types.LiveServerContentModality.AUDIO],
-        speech_config=types.SpeechConfig(
-            voice_config=types.VoiceConfig(
-                prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                    voice_name="Puck"  # Энергичный современный голос (Puck, Charon, Aoede, Fenrir, Kore)
-                )
-            )
-        ),
-        system_instruction=types.Content(
-            parts=[types.Part.from_text(text=SYSTEM_INSTRUCTION)]
-        ),
+    gemini_client = genai.Client(api_key=api_key)
+    chat = gemini_client.chats.create(
+        model="gemini-3.1-flash-lite",
+        config={"system_instruction": SYSTEM_PROMPT}
     )
 
+    await websocket.send_text(json.dumps({
+        "type": "status",
+        "text": "В эфире — говори"
+    }))
+
+    audio_buffer = bytearray()
+    is_processing = False
+
     try:
-        async with client.aio.live.connect(model=model_id, config=config) as session:
-            await websocket.send_text(json.dumps({
-                "type": "status",
-                "text": "Связь с JeBoss установлена! Говори..."
-            }))
+        while True:
+            msg = await websocket.receive()
+            if "bytes" in msg and msg["bytes"]:
+                chunk = msg["bytes"]
+                audio_buffer.extend(chunk)
 
-            async def client_to_gemini():
-                try:
-                    while True:
-                        msg = await websocket.receive()
-                        if "bytes" in msg and msg["bytes"]:
-                            pcm_data = msg["bytes"]
-                            # Отправляем аудиочанк PCM 16-bit 16kHz
-                            await session.send(
-                                input=types.LiveClientRealtimeInput(
-                                    media_chunks=[
-                                        types.Blob(
-                                            data=pcm_data,
-                                            mime_type="audio/pcm;rate=16000"
-                                        )
-                                    ]
-                                )
+                # Каждые ~2 секунды аудио анализируем
+                if len(audio_buffer) >= 64000 and not is_processing:
+                    is_processing = True
+                    pcm_to_process = bytes(audio_buffer)
+                    audio_buffer.clear()
+
+                    loop = asyncio.get_running_loop()
+                    user_text = await loop.run_in_executor(None, recognize_audio, pcm_to_process)
+
+                    if user_text and len(user_text.strip()) > 1:
+                        logger.info(f"Распознано: {user_text}")
+                        await websocket.send_text(json.dumps({
+                            "type": "user_text",
+                            "text": user_text
+                        }))
+                        await websocket.send_text(json.dumps({
+                            "type": "status",
+                            "text": "JeBoss думает..."
+                        }))
+
+                        # Запрос в Gemini
+                        try:
+                            gemini_resp = await loop.run_in_executor(
+                                None,
+                                lambda: chat.send_message(user_text)
                             )
-                        elif "text" in msg and msg["text"]:
-                            data = json.loads(msg["text"])
-                            if data.get("type") == "text":
-                                await session.send(input=data.get("text"), end_of_turn=True)
-                except WebSocketDisconnect:
-                    logger.info("Клиент разорвал соединение")
-                except asyncio.CancelledError:
-                    pass
-                except Exception as e:
-                    logger.error(f"Ошибка в client_to_gemini: {e}")
+                            ai_text = gemini_resp.text
+                            logger.info(f"JeBoss ответил: {ai_text}")
 
-            async def gemini_to_client():
+                            await websocket.send_text(json.dumps({
+                                "type": "ai_text",
+                                "text": ai_text
+                            }))
+
+                            # Озвучка
+                            mp3_bytes = await loop.run_in_executor(None, text_to_speech_mp3, ai_text)
+                            if mp3_bytes:
+                                b64_audio = base64.b64encode(mp3_bytes).decode('ascii')
+                                await websocket.send_text(json.dumps({
+                                    "type": "audio_mp3",
+                                    "data": b64_audio
+                                }))
+
+                        except Exception as ge:
+                            logger.error(f"Gemini error: {ge}")
+                            await websocket.send_text(json.dumps({
+                                "type": "ai_text",
+                                "text": "Я тебя слышу, но давай повторим!"
+                            }))
+
+                        await websocket.send_text(json.dumps({
+                            "type": "status",
+                            "text": "В эфире — говори"
+                        }))
+
+                    is_processing = False
+
+            elif "text" in msg and msg["text"]:
                 try:
-                    async for response in session.receive():
-                        server_content = response.server_content
-                        if server_content is not None:
-                            model_turn = server_content.model_turn
-                            if model_turn is not None:
-                                for part in model_turn.parts:
-                                    # Текстовая расшифровка
-                                    if part.text:
-                                        await websocket.send_text(json.dumps({
-                                            "type": "ai_text",
-                                            "text": part.text
-                                        }))
-                                    # Аудиоданные (PCM 24kHz)
-                                    if part.inline_data:
-                                        raw_audio = part.inline_data.data
-                                        if isinstance(raw_audio, str):
-                                            raw_audio = base64.b64decode(raw_audio)
-                                        # Отправляем бинарный чанк фронтенду
-                                        await websocket.send_bytes(raw_audio)
-
-                            if server_content.interrupted:
-                                await websocket.send_text(json.dumps({"type": "interrupt"}))
-                except asyncio.CancelledError:
+                    data = json.loads(msg["text"])
+                    if data.get("type") == "text":
+                        txt = data.get("text")
+                        gemini_resp = chat.send_message(txt)
+                        await websocket.send_text(json.dumps({
+                            "type": "ai_text",
+                            "text": gemini_resp.text
+                        }))
+                except:
                     pass
-                except Exception as e:
-                    logger.error(f"Ошибка в gemini_to_client: {e}")
 
-            t1 = asyncio.create_task(client_to_gemini())
-            t2 = asyncio.create_task(gemini_to_client())
-
-            done, pending = await asyncio.wait(
-                [t1, t2],
-                return_when=asyncio.FIRST_COMPLETED
-            )
-            for task in pending:
-                task.cancel()
-
+    except WebSocketDisconnect:
+        logger.info("Клиент отключился")
     except Exception as e:
-        logger.error(f"Ошибка сессии Gemini Live: {e}")
-        try:
-            await websocket.send_text(json.dumps({
-                "type": "status",
-                "text": f"Ошибка соединения с AI: {e}"
-            }))
-        except:
-            pass
+        logger.error(f"WS error: {e}")
     finally:
         try:
             await websocket.close()
         except:
             pass
-        logger.info("Сессия закрыта")
 
 if __name__ == "__main__":
     import uvicorn
