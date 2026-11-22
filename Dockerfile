@@ -21,11 +21,9 @@ COPY sw.js /app/sw.js
 COPY apple-touch-icon.png /app/apple-touch-icon.png
 COPY icon-192.png /app/icon-192.png
 COPY icon-512.png /app/icon-512.png
-COPY static /app/static
 
 EXPOSE 8000
-
 ENV HOST=0.0.0.0
 ENV PORT=8000
 
-CMD ["/app/jeboss-live"]
+CMD [ "/app/jeboss-live" ]
