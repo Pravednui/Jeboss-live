@@ -59,8 +59,8 @@ SYSTEM_PROMPT = """
 """
 
 recognizer = sr.Recognizer()
-recognizer.energy_threshold = 300
-recognizer.pause_threshold = 0.5
+recognizer.dynamic_energy_threshold = False
+recognizer.energy_threshold = 100
 
 # Нейронный реалистичный мужской голос для живого диалога
 VOICE = "ru-RU-DmitryNeural"
@@ -83,7 +83,6 @@ def recognize_audio(pcm_bytes: bytes) -> Optional[str]:
 
 async def neural_tts_mp3(text: str) -> Optional[bytes]:
     try:
-        # rate='+15%' дает бодрый телефонный темп живой речи
         comm = edge_tts.Communicate(text=text, voice=VOICE, rate="+15%", pitch="+0Hz")
         audio_data = bytearray()
         async for chunk in comm.stream():
@@ -109,7 +108,6 @@ async def websocket_live_endpoint(websocket: WebSocket):
         return
 
     gemini_client = genai.Client(api_key=api_key)
-    # Используем gemini-3.5-flash-lite для моментального отклика (0.7 сек)
     chat = gemini_client.chats.create(
         model="gemini-3.5-flash-lite",
         config={"system_instruction": SYSTEM_PROMPT}
@@ -121,6 +119,8 @@ async def websocket_live_endpoint(websocket: WebSocket):
     }))
 
     audio_buffer = bytearray()
+    silence_count = 0
+    is_speaking = False
     is_processing = False
 
     try:
@@ -130,11 +130,31 @@ async def websocket_live_endpoint(websocket: WebSocket):
                 chunk = msg["bytes"]
                 audio_buffer.extend(chunk)
 
-                # Уменьшенный буфер для быстрого захвата речи (~1 секунда)
-                if len(audio_buffer) >= 36000 and not is_processing:
+                # Простая детекция громкости (VAD по RMS)
+                # Вычисляем среднюю амплитуду каждые 1600 сэмплов (0.1 сек)
+                if len(chunk) >= 320:
+                    import struct
+                    count = len(chunk) // 2
+                    shorts = struct.unpack(f"<{count}h", chunk[:count*2])
+                    avg_vol = sum(abs(s) for s in shorts) / count
+
+                    if avg_vol > 350:
+                        is_speaking = True
+                        silence_count = 0
+                    else:
+                        if is_speaking:
+                            silence_count += 1
+
+                # Если человек говорил и потом замолчал на ~0.6-0.8 сек (около 6-8 чанков тишины)
+                # ИЛИ если накопилось более 3 секунд аудио:
+                should_trigger = (is_speaking and silence_count >= 6 and len(audio_buffer) >= 20000) or (len(audio_buffer) >= 64000)
+
+                if should_trigger and not is_processing:
                     is_processing = True
                     pcm_to_process = bytes(audio_buffer)
                     audio_buffer.clear()
+                    is_speaking = False
+                    silence_count = 0
 
                     loop = asyncio.get_running_loop()
                     user_text = await loop.run_in_executor(None, recognize_audio, pcm_to_process)
@@ -145,8 +165,12 @@ async def websocket_live_endpoint(websocket: WebSocket):
                             "type": "user_text",
                             "text": user_text
                         }))
+                        await websocket.send_text(json.dumps({
+                            "type": "status",
+                            "text": "JeBoss отвечает..."
+                        }))
 
-                        # Запрос в сверхбыстрый Gemini 3.5 Flash Lite
+                        # Запрос в Gemini
                         try:
                             gemini_resp = await loop.run_in_executor(
                                 None,
@@ -171,6 +195,11 @@ async def websocket_live_endpoint(websocket: WebSocket):
 
                         except Exception as ge:
                             logger.error(f"Gemini error: {ge}")
+
+                        await websocket.send_text(json.dumps({
+                            "type": "status",
+                            "text": "В эфире — говори"
+                        }))
 
                     is_processing = False
 
