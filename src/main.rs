@@ -52,8 +52,8 @@ async fn main() {
         .route("/apple-touch-icon.png", get(serve_apple_icon))
         .route("/icon-192.png", get(serve_icon_192))
         .route("/icon-512.png", get(serve_icon_512))
-        .route("/:filename", get(serve_static_fallback))
         .route("/ws/live", get(ws_handler))
+        .route("/:filename", get(serve_static_fallback))
         .layer(CorsLayer::permissive())
         .with_state(state);
 
