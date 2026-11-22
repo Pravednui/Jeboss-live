@@ -179,9 +179,14 @@ async def websocket_live_endpoint(websocket: WebSocket):
                             ai_text = gemini_resp.text.strip()
                             logger.info(f"JeBoss ответил: {ai_text}")
 
+                            # Проверяем, просил ли пользователь написать текстом
+                            lower_user = user_text.lower()
+                            should_write = any(w in lower_user for w in ["напиши", "текстом", "в чат", "скинь текст", "продублируй"])
+
                             await websocket.send_text(json.dumps({
                                 "type": "ai_text",
-                                "text": ai_text
+                                "text": ai_text,
+                                "show_text": should_write
                             }))
 
                             # Генерация живого нейронного голоса
