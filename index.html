@@ -129,7 +129,8 @@
 
   <script>
     // Замени на адрес своего WebSocket-бэкенда
-    const WS_URL = "wss://ТВОЙ-БЭКЕНД.com/ws/live";
+    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+const WS_URL = `${proto}//${window.location.host}/ws/live`;
 
     const liveBtn = document.getElementById("liveBtn");
     const statusEl = document.getElementById("status");
