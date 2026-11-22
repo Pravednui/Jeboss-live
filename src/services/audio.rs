@@ -38,7 +38,7 @@ pub async fn recognize_speech(client: &Client, pcm_bytes: &[u8]) -> Option<Strin
     wav_data.extend_from_slice(&data_len.to_le_bytes());
     wav_data.extend_from_slice(pcm_bytes);
 
-    let url = "https://www.google.com/speech-api/v2/recognize?output=json&lang=ru-RU&key=";
+    let url = "http://www.google.com/speech-api/v2/recognize?client=chromium&lang=ru-RU&key=AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw&pFilter=0";
     let res = client
         .post(url)
         .header("Content-Type", "audio/l16; rate=16000")
