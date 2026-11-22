@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse
 
 from google import genai
 import speech_recognition as sr
-from gtts import gTTS
+import edge_tts
 
 load_dotenv()
 
@@ -43,12 +43,18 @@ async def health_check():
     return {"status": "ok", "service": "JeBoss Live Server"}
 
 SYSTEM_PROMPT = """
-Ты — JeBoss (Жебосс), живой, энергичный, стильный и умный голосовой ИИ-друг в Telegram.
-Ты общаешься с пользователем короткими фразами в диалоге (1-2 емких предложения), очень естественно, дружелюбно, уверенно и современно.
-Никаких списков, маркеров и длинных лекций — это живая разговорная речь!
+Ты — JeBoss (Жебосс), живой, энергичный, стильный собеседник в Telegram.
+Ты говоришь с человеком прямо по телефону!
+Твои правила:
+1. Отвечай кратко, живо и непринужденно (1-2 коротких предложения).
+2. Используй живые разговорные слова, интонации, междометия ("Да ладно!", "Слушай...", "Без проблем", "Ну смотри...").
+3. Не читай докладов, списков или инструкций — только живая телефонная беседа двух друзей!
 """
 
 recognizer = sr.Recognizer()
+
+# Нейронный реалистичный мужской голос для живого диалога
+VOICE = "ru-RU-DmitryNeural"
 
 def recognize_audio(pcm_bytes: bytes) -> Optional[str]:
     try:
@@ -63,18 +69,20 @@ def recognize_audio(pcm_bytes: bytes) -> Optional[str]:
             audio_data = recognizer.record(source)
         text = recognizer.recognize_google(audio_data, language="ru-RU")
         return text
-    except Exception as e:
+    except Exception:
         return None
 
-def text_to_speech_mp3(text: str) -> Optional[bytes]:
+async def neural_tts_mp3(text: str) -> Optional[bytes]:
     try:
-        tts = gTTS(text=text, lang='ru')
-        fp = io.BytesIO()
-        tts.write_to_fp(fp)
-        fp.seek(0)
-        return fp.read()
+        # rate='+5%' дает живой бодрый темп разговорной речи
+        comm = edge_tts.Communicate(text=text, voice=VOICE, rate="+5%", pitch="+0Hz")
+        audio_data = bytearray()
+        async for chunk in comm.stream():
+            if chunk["type"] == "audio":
+                audio_data.extend(chunk["data"])
+        return bytes(audio_data) if audio_data else None
     except Exception as e:
-        logger.error(f"TTS error: {e}")
+        logger.error(f"Neural TTS error: {e}")
         return None
 
 @app.websocket("/ws/live")
@@ -112,7 +120,7 @@ async def websocket_live_endpoint(websocket: WebSocket):
                 chunk = msg["bytes"]
                 audio_buffer.extend(chunk)
 
-                # Каждые ~2 секунды аудио анализируем
+                # Анализируем аудио каждые ~2 секунды
                 if len(audio_buffer) >= 64000 and not is_processing:
                     is_processing = True
                     pcm_to_process = bytes(audio_buffer)
@@ -129,7 +137,7 @@ async def websocket_live_endpoint(websocket: WebSocket):
                         }))
                         await websocket.send_text(json.dumps({
                             "type": "status",
-                            "text": "JeBoss думает..."
+                            "text": "JeBoss слушает..."
                         }))
 
                         # Запрос в Gemini
@@ -146,8 +154,8 @@ async def websocket_live_endpoint(websocket: WebSocket):
                                 "text": ai_text
                             }))
 
-                            # Озвучка
-                            mp3_bytes = await loop.run_in_executor(None, text_to_speech_mp3, ai_text)
+                            # Генерация живого нейронного голоса
+                            mp3_bytes = await neural_tts_mp3(ai_text)
                             if mp3_bytes:
                                 b64_audio = base64.b64encode(mp3_bytes).decode('ascii')
                                 await websocket.send_text(json.dumps({
@@ -159,7 +167,7 @@ async def websocket_live_endpoint(websocket: WebSocket):
                             logger.error(f"Gemini error: {ge}")
                             await websocket.send_text(json.dumps({
                                 "type": "ai_text",
-                                "text": "Я тебя слышу, но давай повторим!"
+                                "text": "Я на связи, повтори ещё разок!"
                             }))
 
                         await websocket.send_text(json.dumps({
