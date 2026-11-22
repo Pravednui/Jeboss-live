@@ -1,9 +1,0 @@
-.env
-*.pyc
-__pycache__/
-.venv/
-venv/
-.DS_Store
-Thumbs.db
-*.log
-memory.json
