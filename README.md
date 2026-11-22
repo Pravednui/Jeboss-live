@@ -1,62 +1,54 @@
-# JeBoss Live — Голосовой ИИ-компаньон для Telegram
+# JeBoss Live — Модульный голосовой ИИ-компаньон (Python 3)
 
-Полноценная система для двустороннего голосового общения в реальном времени с искусственным интеллектом в Telegram Mini App, работающая на **Google Gemini Multimodal Live API**.
-
----
-
-## 🚀 Архитектура проекта
-
-1. **Frontend (Telegram Mini App)**:
-   - Захват аудио с микрофона (PCM 16-bit, 16 000 Гц).
-   - WebSocket стриминг на бэкенд.
-   - Воспроизведение входящего потокового аудио от Gemini (PCM 16-bit, 24 000 Гц) без задержек через Web Audio API.
-   - Поддержка перебивания (Barge-in / Interrupt): если пользователь начинает говорить, ИИ мгновенно останавливает свою речь.
-
-2. **Backend (Python / FastAPI)**:
-   - WebSocket endpoint `/ws/live`.
-   - Прямой стриминг в **Gemini 2.0 Live WebSocket API** с поддержкой голосовых модальностей.
-   - Настроенная личность **JeBoss** (системный промпт, голос `Puck`).
+Полностью переведённая на чистую и модульную архитектуру Python серверная часть голосового Telegram Mini App / iOS PWA компаньона **JeBoss**.
 
 ---
 
-## 🛠 Запуск проекта
+## 🏛 Архитектура проекта
 
-### 1. Локальный запуск
-
-1. Перейдите в папку проекта:
-   ```bash
-   cd C:\Users\Pravednui\.gemini\antigravity\scratch\jeboss-live
-   ```
-
-2. Создайте файл `.env` на основе `.env.example` и укажите ваш API-ключ Gemini:
-   ```env
-   GEMINI_API_KEY=ваш_ключ_из_aistudio_google_com
-   ```
-
-3. Запустите сервер:
-   ```bash
-   python server.py
-   ```
-   Сервер запустится на `http://localhost:8000`.
-
-4. Для работы в Telegram Mini App нужен защищённый адрес **WSS**. Пробросьте порт через **ngrok** или **cloudflared**:
-   ```bash
-   ngrok http 8000
-   ```
-   Полученный адрес вида `https://xxxx.ngrok-free.app` вставьте в Telegram BotFather как ссылку на Mini App, либо передайте параметром:
-   `https://ваш-сайт.com/?ws=wss://xxxx.ngrok-free.app`
+```text
+JeBoss/
+├── app/
+│   ├── core/
+│   │   ├── __init__.py
+│   │   └── config.py          # Конфигурация, переменные окружения, константы VAD
+│   ├── services/
+│   │   ├── __init__.py
+│   │   ├── ai.py              # Интеграция с Gemini 3.5 Flash Lite и фоновая рефлексия
+│   │   ├── audio.py           # Speech-to-Text (16kHz PCM) и Neural TTS (Edge TTS)
+│   │   └── memory.py          # Долговременная память, динамический промпт и словарь
+│   └── __init__.py
+├── static/                    # Статические ассеты PWA и иконки
+│   ├── apple-touch-icon.png
+│   ├── icon-192.png
+│   ├── icon-512.png
+│   ├── manifest.json
+│   └── sw.js
+├── index.html                 # Живой космический UI с Квантовым Порталом и панелью Gemini
+├── server.py                  # Точка входа FastAPI (роуты, WebSockets, статика)
+├── requirements.txt           # Только реальные Python-зависимости
+├── render.yaml                # Конфигурация развертывания на Render.com
+├── Dockerfile                 # Легковесный Docker контейнер на Python 3.11-slim
+├── .gitignore                 # Исключение секретов и кэша
+└── README.md
+```
 
 ---
 
-## ☁️ Бесплатный деплой в облако (Render / Railway)
+## 🚀 Быстрый запуск
 
-1. Загрузите файлы в ваш GitHub-репозиторий.
-2. Зайдите на [render.com](https://render.com) -> **New Web Service** -> выберите ваш репозиторий.
-3. Укажите:
-   - **Environment**: Python 3
+### 1. Локально
+```bash
+pip install -r requirements.txt
+python server.py
+```
+Сервер запустится на `http://localhost:8000`.
+
+### 2. Развертывание на Render.com
+1. Загрузите файлы репозитория в GitHub.
+2. В Render создайте **Web Service**:
+   - **Runtime**: `Python 3` (или `Docker`)
    - **Build Command**: `pip install -r requirements.txt`
    - **Start Command**: `uvicorn server:app --host 0.0.0.0 --port $PORT`
-4. В разделе **Environment Variables** добавьте:
-   - `GEMINI_API_KEY`: ваш API ключ.
-5. Render выдаст готовый домен с поддержкой HTTPS и WSS (например, `https://jeboss-live.onrender.com`).
-6. Укажите этот адрес в BotFather в Telegram.
+3. В **Environment Variables** укажите:
+   - `GEMINI_API_KEY`: ваш ключ Google AI Studio.

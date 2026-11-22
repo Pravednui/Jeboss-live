@@ -1,17 +1,9 @@
-# Файлы с ключами и паролями (никогда не попадут в GitHub!)
 .env
-.env.local
-*.env
-
-# Python кэш и виртуальные окружения
+*.pyc
 __pycache__/
-*.py[cod]
-*$py.class
-venv/
 .venv/
-env/
-
-# Логи и временные файлы
-*.log
+venv/
 .DS_Store
 Thumbs.db
+*.log
+memory.json
